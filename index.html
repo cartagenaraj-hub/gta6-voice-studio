@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTA6 Galaxy · Voice Studio</title>
+<style>
+  :root{
+    --bg:#0d0716; --panel:#170d26; --panel2:#1f1233; --line:#33204f;
+    --pink:#ff3d9a; --orange:#ff9a3d; --cyan:#39d5ff; --text:#f3eaff; --muted:#a993c7;
+    --ok:#4ade80; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:
+    radial-gradient(1200px 500px at 80% -10%,#3a0f4a 0%,transparent 60%),
+    radial-gradient(900px 400px at -10% 110%,#0f2f4a 0%,transparent 60%),var(--bg);
+    color:var(--text);min-height:100vh}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+  header h1{margin:0;font-size:30px;letter-spacing:.5px;
+    background:linear-gradient(90deg,var(--pink),var(--orange));-webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{margin:6px 0 22px;color:var(--muted)}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:16px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:16px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 6px}
+  textarea,select,input[type=text]{width:100%;background:#0b0614;color:var(--text);border:1px solid var(--line);
+    border-radius:10px;padding:12px;font-size:15px;font-family:inherit}
+  textarea{min-height:220px;resize:vertical;line-height:1.5}
+  #dict{min-height:90px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+  .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  @media(max-width:700px){.row{grid-template-columns:1fr}}
+  input[type=range]{width:100%;accent-color:var(--pink)}
+  button{border:0;border-radius:12px;padding:13px 20px;font-size:15px;font-weight:700;cursor:pointer;
+    background:linear-gradient(90deg,var(--pink),var(--orange));color:#1a0820}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .status{font-size:14px;color:var(--muted);margin-top:10px;min-height:20px}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+  .bar{height:8px;background:#0b0614;border-radius:99px;overflow:hidden;margin-top:10px;border:1px solid var(--line)}
+  .bar>div{height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--pink));transition:width .2s}
+  audio{width:100%;margin-top:12px}
+  .meta{font-size:13px;color:var(--muted);margin-top:6px}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .count{font-size:12px;color:var(--muted);text-align:right;margin-top:4px}
+  a.dl{display:inline-block;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>GTA6 Galaxy · Voice Studio</h1>
+    <p>Voz en inglés gratis, generada dentro de tu navegador. Nada se sube a ningún servidor.</p>
+  </header>
+
+  <section class="card">
+    <h2>1 · Motor de voz</h2>
+    <div class="actions" style="margin-top:0">
+      <button id="loadBtn">Cargar motor de voz</button>
+      <span class="meta" id="deviceInfo"></span>
+    </div>
+    <div class="bar"><div id="loadBar"></div></div>
+    <div class="status" id="loadStatus">La primera vez descarga el modelo (puede tardar unos minutos). Después queda guardado en este navegador.</div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Guion</h2>
+    <textarea id="script">GTA 6 drops in two days. Follow these 4 channels so you don't miss a thing.
+Number one: TGG. He breaks down every trailer frame by frame. If there's a hidden detail, he finds it.
+Number two: MrBossFTW. Over 16 million subscribers. News, updates and money guides the second they drop.
+Number three: Saintsfan. Deep dives into leaks and Rockstar's plans, what's real and what's fake.
+Number four: Will Mac Daddy. He calls out fake leaks and keeps the hype honest.
+And follow GTA6 Galaxy for daily GTA 6 Shorts. Who did I miss? Drop it in the comments.</textarea>
+    <div class="count" id="count"></div>
+
+    <label for="dict">Pronunciación (opcional) — una regla por línea: <b>como está escrito = como debe sonar</b></label>
+    <textarea id="dict">GTA6 Galaxy = G T A Six Galaxy
+GTA 6 = G T A Six
+GTA6 = G T A Six
+GTA 5 = G T A Five
+TGG = T G G
+MrBossFTW = Mister Boss F T W</textarea>
+    <div class="hint">Los subtítulos (.srt) usan el texto original; estas reglas solo cambian cómo se pronuncia.</div>
+
+    <div class="row">
+      <div>
+        <label for="voice">Voz</label>
+        <select id="voice"></select>
+      </div>
+      <div>
+        <label for="speed">Velocidad: <span id="speedVal">1.10</span>x</label>
+        <input type="range" id="speed" min="0.7" max="1.4" step="0.05" value="1.1">
+      </div>
+      <div>
+        <label for="pause">Pausa entre frases: <span id="pauseVal">0.20</span> s</label>
+        <input type="range" id="pause" min="0" max="0.8" step="0.05" value="0.2">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="genBtn" disabled>Generar voz</button>
+      <button id="previewBtn" class="ghost" disabled>Probar voz (1 frase)</button>
+    </div>
+    <div class="bar"><div id="genBar"></div></div>
+    <div class="status" id="genStatus">Primero carga el motor de voz.</div>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2>3 · Resultado</h2>
+    <audio id="player" controls></audio>
+    <div class="meta" id="resultMeta"></div>
+    <div class="actions">
+      <a class="dl" id="dlWav"><button>Descargar audio (.wav)</button></a>
+      <a class="dl" id="dlSrt"><button class="ghost">Descargar subtítulos (.srt)</button></a>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+const KOKORO_URL = "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js";
+const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+const SR = 24000;
+
+// Voces con mejor calidad primero (calificación oficial del modelo)
+const VOICES = [
+  ["am_michael","Michael — hombre, EE. UU. (recomendada para el canal)"],
+  ["am_fenrir","Fenrir — hombre, EE. UU., más grave"],
+  ["am_puck","Puck — hombre, EE. UU., más enérgica"],
+  ["af_heart","Heart — mujer, EE. UU. (la de mejor calidad)"],
+  ["af_bella","Bella — mujer, EE. UU."],
+  ["af_nicole","Nicole — mujer, EE. UU., suave"],
+  ["bm_george","George — hombre, Reino Unido"],
+  ["bm_fable","Fable — hombre, Reino Unido"],
+  ["bf_emma","Emma — mujer, Reino Unido"],
+];
+
+const $ = id => document.getElementById(id);
+const voiceSel = $("voice");
+VOICES.forEach(([id,label]) => { const o=document.createElement("option"); o.value=id; o.textContent=label; voiceSel.appendChild(o); });
+try { const saved = localStorage.getItem("g6-voice"); if (saved) voiceSel.value = saved; } catch {}
+voiceSel.addEventListener("change", () => { try { localStorage.setItem("g6-voice", voiceSel.value); } catch {} });
+
+$("speed").oninput = e => $("speedVal").textContent = Number(e.target.value).toFixed(2);
+$("pause").oninput = e => $("pauseVal").textContent = Number(e.target.value).toFixed(2);
+const updateCount = () => {
+  const words = $("script").value.trim().split(/\s+/).filter(Boolean).length;
+  $("count").textContent = `${words} palabras · ~${Math.round(words/2.6)} s de voz aprox.`;
+};
+$("script").addEventListener("input", updateCount); updateCount();
+
+let tts = null;
+let lastUrls = [];
+
+function setStatus(el, msg, cls="") { el.textContent = msg; el.className = "status " + cls; }
+
+$("loadBtn").onclick = async () => {
+  $("loadBtn").disabled = true;
+  setStatus($("loadStatus"), "Cargando librería…");
+  try {
+    const { KokoroTTS } = await import(KOKORO_URL);
+    let device = "wasm", dtype = "q8";
+    if (navigator.gpu) {
+      try { const a = await navigator.gpu.requestAdapter(); if (a) { device = "webgpu"; dtype = "fp32"; } } catch {}
+    }
+    $("deviceInfo").textContent = device === "webgpu" ? "Usando la tarjeta gráfica (rápido)" : "Usando el procesador (más lento, pero funciona)";
+    const files = {};
+    const progress = p => {
+      if (p.status === "progress" && p.total) {
+        files[p.file] = [p.loaded, p.total];
+        let l=0,t=0; Object.values(files).forEach(([a,b])=>{l+=a;t+=b;});
+        $("loadBar").style.width = (100*l/t).toFixed(1) + "%";
+        setStatus($("loadStatus"), `Descargando modelo… ${(l/1e6).toFixed(0)} / ${(t/1e6).toFixed(0)} MB`);
+      }
+    };
+    try {
+      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype, device, progress_callback: progress });
+    } catch (e) {
+      if (device !== "webgpu") throw e;
+      console.warn("WebGPU falló, usando WASM", e);
+      $("deviceInfo").textContent = "Usando el procesador (más lento, pero funciona)";
+      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: "q8", device: "wasm", progress_callback: progress });
+    }
+    $("loadBar").style.width = "100%";
+    setStatus($("loadStatus"), "Motor listo ✔", "ok");
+    $("genBtn").disabled = false; $("previewBtn").disabled = false;
+    setStatus($("genStatus"), "Listo para generar.");
+    $("loadBtn").textContent = "Motor cargado";
+  } catch (e) {
+    console.error(e);
+    setStatus($("loadStatus"), "Error al cargar: " + (e.message || e) + " — recarga la página e intenta de nuevo (mejor en Chrome de computadora).", "err");
+    $("loadBtn").disabled = false;
+  }
+};
+
+function parseDict() {
+  return $("dict").value.split("\n").map(l => l.split("=")).filter(p => p.length >= 2)
+    .map(([a,...b]) => [a.trim(), b.join("=").trim()]).filter(([a,b]) => a && b)
+    .sort((x,y) => y[0].length - x[0].length); // reglas más largas primero
+}
+function applyDict(text, dict) {
+  for (const [from,to] of dict) {
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`(?<![\\w])${esc}(?![\\w])`, "gi"), to);
+  }
+  return text;
+}
+function splitSentences(text) {
+  return text.split(/\n+/).flatMap(line => line.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [])
+    .map(s => s.trim()).filter(Boolean);
+}
+
+function encodeWav(samples) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const w = (o,s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,"RIFF"); v.setUint32(4, 36 + samples.length*2, true); w(8,"WAVE"); w(12,"fmt ");
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,SR,true); v.setUint32(28,SR*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,"data"); v.setUint32(40, samples.length*2, true);
+  for (let i=0;i<samples.length;i++) { const s = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44+i*2, s<0 ? s*0x8000 : s*0x7FFF, true); }
+  return new Blob([buf], { type: "audio/wav" });
+}
+const ts = sec => { const ms=Math.round(sec*1000), h=Math.floor(ms/3600000), m=Math.floor(ms/60000)%60, s=Math.floor(ms/1000)%60;
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")},${String(ms%1000).padStart(3,"0")}`; };
+
+async function run(sentences) {
+  const dict = parseDict();
+  const voice = voiceSel.value, speed = Number($("speed").value);
+  const gap = new Float32Array(Math.round(Number($("pause").value) * SR));
+  const parts = [], cues = []; let t = 0;
+  $("genBtn").disabled = true; $("previewBtn").disabled = true;
+  try {
+    for (let i = 0; i < sentences.length; i++) {
+      setStatus($("genStatus"), `Generando frase ${i+1} de ${sentences.length}…`);
+      $("genBar").style.width = (100*i/sentences.length) + "%";
+      const audio = await tts.generate(applyDict(sentences[i], dict), { voice, speed });
+      const data = audio.audio;
+      const dur = data.length / SR;
+      cues.push([t, t + dur, sentences[i]]);
+      parts.push(data); t += dur;
+      if (i < sentences.length - 1 && gap.length) { parts.push(gap); t += gap.length / SR; }
+    }
+    const total = parts.reduce((n,p) => n + p.length, 0), all = new Float32Array(total);
+    let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+
+    lastUrls.forEach(u => URL.revokeObjectURL(u));
+    const wavUrl = URL.createObjectURL(encodeWav(all));
+    const srt = cues.map(([a,b,txt],i) => `${i+1}\n${ts(a)} --> ${ts(b)}\n${txt}\n`).join("\n");
+    const srtUrl = URL.createObjectURL(new Blob([srt], { type: "text/plain" }));
+    lastUrls = [wavUrl, srtUrl];
+
+    const stamp = new Date().toISOString().slice(0,16).replace(/[-:T]/g,"");
+    $("player").src = wavUrl;
+    $("dlWav").href = wavUrl; $("dlWav").download = `gta6galaxy-voz-${stamp}.wav`;
+    $("dlSrt").href = srtUrl; $("dlSrt").download = `gta6galaxy-subs-${stamp}.srt`;
+    $("resultMeta").textContent = `Duración: ${t.toFixed(1)} s · Voz: ${voice} · Velocidad ${speed}x` + (t > 60 ? " · Ojo: más de 60 s" : "");
+    $("resultCard").hidden = false;
+    $("genBar").style.width = "100%";
+    setStatus($("genStatus"), "Listo ✔ Escúchalo abajo y descárgalo.", "ok");
+    $("player").play().catch(()=>{});
+  } catch (e) {
+    console.error(e);
+    setStatus($("genStatus"), "Error al generar: " + (e.message || e), "err");
+  } finally {
+    $("genBtn").disabled = false; $("previewBtn").disabled = false;
+  }
+}
+
+$("genBtn").onclick = () => {
+  const s = splitSentences($("script").value);
+  if (!s.length) return setStatus($("genStatus"), "Escribe un guion primero.", "err");
+  run(s);
+};
+$("previewBtn").onclick = () => {
+  const s = splitSentences($("script").value);
+  run([s[0] || "Welcome to GTA Six Galaxy."]);
+};
+</script>
+</body>
+</html>
