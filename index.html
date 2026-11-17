@@ -156,37 +156,83 @@ const updateCount = () => {
 };
 $("script").addEventListener("input", updateCount); updateCount();
 
-let tts = null;
 let lastUrls = [];
+let worker = null, msgId = 0, loadCb = null, onProgress = null;
+const pending = new Map();
+
+// La voz se genera en un "worker" (segundo plano) para que la página nunca se congele
+const WORKER_SRC = `
+let tts;
+self.onmessage = async (e) => {
+  const m = e.data;
+  try {
+    if (m.type === "load") {
+      const { KokoroTTS } = await import(m.url);
+      tts = await KokoroTTS.from_pretrained(m.model, { dtype: m.dtype, device: m.device,
+        progress_callback: p => self.postMessage({ type: "progress", p: { status: p.status, file: p.file, loaded: p.loaded, total: p.total } }) });
+      self.postMessage({ type: "loaded" });
+    } else if (m.type === "gen") {
+      const a = await tts.generate(m.text, { voice: m.voice, speed: m.speed });
+      const data = new Float32Array(a.audio);
+      self.postMessage({ type: "audio", id: m.id, data }, [data.buffer]);
+    }
+  } catch (err) {
+    self.postMessage({ type: "error", id: m.id, message: String((err && err.message) || err) });
+  }
+};`;
+
+function makeWorker() {
+  if (worker) worker.terminate();
+  worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" })), { type: "module" });
+  worker.onmessage = e => {
+    const m = e.data;
+    if (m.type === "progress") onProgress && onProgress(m.p);
+    else if (m.type === "loaded") loadCb && loadCb.res();
+    else if (m.type === "audio") { const q = pending.get(m.id); pending.delete(m.id); q && q.res(m.data); }
+    else if (m.type === "error") {
+      if (m.id && pending.has(m.id)) { const q = pending.get(m.id); pending.delete(m.id); q.rej(new Error(m.message)); }
+      else loadCb && loadCb.rej(new Error(m.message));
+    }
+  };
+  worker.onerror = e => { loadCb && loadCb.rej(new Error(e.message || "Error en el motor")); };
+}
+function loadModel(device, dtype) {
+  makeWorker();
+  return new Promise((res, rej) => { loadCb = { res, rej }; worker.postMessage({ type: "load", url: KOKORO_URL, model: MODEL_ID, device, dtype }); });
+}
+function genAudio(text, voice, speed) {
+  return new Promise((res, rej) => { const id = ++msgId; pending.set(id, { res, rej }); worker.postMessage({ type: "gen", id, text, voice, speed }); });
+}
+let ready = false;
 
 function setStatus(el, msg, cls="") { el.textContent = msg; el.className = "status " + cls; }
 
 $("loadBtn").onclick = async () => {
   $("loadBtn").disabled = true;
   setStatus($("loadStatus"), "Cargando librería…");
+  let [device, dtype] = $("mode").value.split("|");
+  if (device === "webgpu" && !navigator.gpu) { device = "wasm"; dtype = "fp32"; }
+  $("mode").disabled = true;
+  $("deviceInfo").textContent = device === "webgpu" ? "Usando la tarjeta gráfica (experimental)" : `Usando el procesador · ${dtype === "fp32" ? "calidad máxima" : "ligero"}`;
+  const files = {};
+  onProgress = p => {
+    if (p.status === "progress" && p.total) {
+      files[p.file] = [p.loaded, p.total];
+      let l=0,t=0; Object.values(files).forEach(([a,b])=>{l+=a;t+=b;});
+      $("loadBar").style.width = (100*l/t).toFixed(1) + "%";
+      setStatus($("loadStatus"), `Descargando modelo… ${(l/1e6).toFixed(0)} / ${(t/1e6).toFixed(0)} MB`);
+    }
+  };
   try {
-    const { KokoroTTS } = await import(KOKORO_URL);
-    let [device, dtype] = $("mode").value.split("|");
-    if (device === "webgpu" && !navigator.gpu) { device = "wasm"; dtype = "fp32"; }
-    $("mode").disabled = true;
-    $("deviceInfo").textContent = device === "webgpu" ? "Usando la tarjeta gráfica (experimental)" : `Usando el procesador · ${dtype === "fp32" ? "calidad máxima" : "ligero"}`;
-    const files = {};
-    const progress = p => {
-      if (p.status === "progress" && p.total) {
-        files[p.file] = [p.loaded, p.total];
-        let l=0,t=0; Object.values(files).forEach(([a,b])=>{l+=a;t+=b;});
-        $("loadBar").style.width = (100*l/t).toFixed(1) + "%";
-        setStatus($("loadStatus"), `Descargando modelo… ${(l/1e6).toFixed(0)} / ${(t/1e6).toFixed(0)} MB`);
-      }
-    };
     try {
-      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype, device, progress_callback: progress });
+      await loadModel(device, dtype);
     } catch (e) {
       if (device !== "webgpu") throw e;
       console.warn("WebGPU falló, usando WASM", e);
-      $("deviceInfo").textContent = "Usando el procesador (más lento, pero funciona)";
-      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: "fp32", device: "wasm", progress_callback: progress });
+      $("deviceInfo").textContent = "Usando el procesador · calidad máxima";
+      await loadModel("wasm", "fp32");
     }
+    ready = true;
     $("loadBar").style.width = "100%";
     setStatus($("loadStatus"), "Motor listo ✔", "ok");
     $("genBtn").disabled = false; $("previewBtn").disabled = false;
@@ -237,10 +283,9 @@ async function run(sentences) {
   $("genBtn").disabled = true; $("previewBtn").disabled = true;
   try {
     for (let i = 0; i < sentences.length; i++) {
-      setStatus($("genStatus"), `Generando frase ${i+1} de ${sentences.length}…`);
+      setStatus($("genStatus"), `Generando frase ${i+1} de ${sentences.length}… (en modo procesador puede tardar; la página no se congela)`);
       $("genBar").style.width = (100*i/sentences.length) + "%";
-      const audio = await tts.generate(applyDict(sentences[i], dict), { voice, speed });
-      const data = audio.audio;
+      const data = await genAudio(applyDict(sentences[i], dict), voice, speed);
       const dur = data.length / SR;
       cues.push([t, t + dur, sentences[i]]);
       parts.push(data); t += dur;
