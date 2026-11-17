@@ -55,7 +55,13 @@
 
   <section class="card">
     <h2>1 · Motor de voz</h2>
-    <div class="actions" style="margin-top:0">
+    <label for="mode" style="margin-top:0">Modo</label>
+    <select id="mode">
+      <option value="wasm|fp32">Calidad máxima — procesador (recomendado, ~300 MB la primera vez)</option>
+      <option value="wasm|q8">Ligero — procesador (descarga más pequeña, un poco menos de calidad)</option>
+      <option value="webgpu|fp32">Rápido — tarjeta gráfica (experimental: en algunas PCs suena deforme)</option>
+    </select>
+    <div class="actions">
       <button id="loadBtn">Cargar motor de voz</button>
       <span class="meta" id="deviceInfo"></span>
     </div>
@@ -140,6 +146,8 @@ VOICES.forEach(([id,label]) => { const o=document.createElement("option"); o.val
 try { const saved = localStorage.getItem("g6-voice"); if (saved) voiceSel.value = saved; } catch {}
 voiceSel.addEventListener("change", () => { try { localStorage.setItem("g6-voice", voiceSel.value); } catch {} });
 
+try { const m = localStorage.getItem("g6-mode"); if (m) $("mode").value = m; } catch {}
+$("mode").addEventListener("change", () => { try { localStorage.setItem("g6-mode", $("mode").value); } catch {} });
 $("speed").oninput = e => $("speedVal").textContent = Number(e.target.value).toFixed(2);
 $("pause").oninput = e => $("pauseVal").textContent = Number(e.target.value).toFixed(2);
 const updateCount = () => {
@@ -158,11 +166,10 @@ $("loadBtn").onclick = async () => {
   setStatus($("loadStatus"), "Cargando librería…");
   try {
     const { KokoroTTS } = await import(KOKORO_URL);
-    let device = "wasm", dtype = "q8";
-    if (navigator.gpu) {
-      try { const a = await navigator.gpu.requestAdapter(); if (a) { device = "webgpu"; dtype = "fp32"; } } catch {}
-    }
-    $("deviceInfo").textContent = device === "webgpu" ? "Usando la tarjeta gráfica (rápido)" : "Usando el procesador (más lento, pero funciona)";
+    let [device, dtype] = $("mode").value.split("|");
+    if (device === "webgpu" && !navigator.gpu) { device = "wasm"; dtype = "fp32"; }
+    $("mode").disabled = true;
+    $("deviceInfo").textContent = device === "webgpu" ? "Usando la tarjeta gráfica (experimental)" : `Usando el procesador · ${dtype === "fp32" ? "calidad máxima" : "ligero"}`;
     const files = {};
     const progress = p => {
       if (p.status === "progress" && p.total) {
@@ -178,7 +185,7 @@ $("loadBtn").onclick = async () => {
       if (device !== "webgpu") throw e;
       console.warn("WebGPU falló, usando WASM", e);
       $("deviceInfo").textContent = "Usando el procesador (más lento, pero funciona)";
-      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: "q8", device: "wasm", progress_callback: progress });
+      tts = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: "fp32", device: "wasm", progress_callback: progress });
     }
     $("loadBar").style.width = "100%";
     setStatus($("loadStatus"), "Motor listo ✔", "ok");
@@ -188,7 +195,7 @@ $("loadBtn").onclick = async () => {
   } catch (e) {
     console.error(e);
     setStatus($("loadStatus"), "Error al cargar: " + (e.message || e) + " — recarga la página e intenta de nuevo (mejor en Chrome de computadora).", "err");
-    $("loadBtn").disabled = false;
+    $("loadBtn").disabled = false; $("mode").disabled = false;
   }
 };
 
